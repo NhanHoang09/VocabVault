@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Flashcard, StudySession, ProgressStats } from '@/types';
 import { STUDY_CONFIG } from '@/constants';
-import { api } from '@/lib/api';
+// import { api } from '@/lib/api';
 
 interface UseStudyReturn {
   currentCard: Flashcard | null;
@@ -38,15 +38,38 @@ export function useStudy(): UseStudyReturn {
         setIsLoading(true);
 
         // Get flashcards for session
-        const response = await api.get('/study/session', {
-          params: {
-            category,
-            difficulty,
-            limit: STUDY_CONFIG.DAILY_GOAL_DEFAULT,
-          },
-        });
+        // const response = await api.get('/study/session', {
+        //   params: {
+        //     category,
+        //     difficulty,
+        //     limit: STUDY_CONFIG.DAILY_GOAL_DEFAULT,
+        //   },
+        // });
 
-        const cards: Flashcard[] = response.data;
+        // const cards: Flashcard[] = response.data;
+
+        // Mock cards for testing
+        const cards: Flashcard[] = [
+          {
+            id: '1',
+            word: 'hello',
+            translation: 'xin chào',
+            pronunciation: '/həˈloʊ/',
+            partOfSpeech: 'interjection',
+            definition: 'used as a greeting',
+            example: 'Hello, how are you?',
+            difficulty: 'beginner',
+            category: 'basic',
+            tags: ['greeting'],
+            isLearned: false,
+            lastReviewed: new Date(),
+            nextReview: new Date(),
+            reviewCount: 0,
+            masteryLevel: 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ];
         setSessionCards(cards);
         setCurrentCard(cards[0] || null);
         setSessionStats({
@@ -80,13 +103,14 @@ export function useStudy(): UseStudyReturn {
         }));
 
         // Send answer to backend
-        await api.post('/study/answer', {
-          wordId: currentCard.id,
-          isCorrect,
-          masteryLevel: isCorrect
-            ? currentCard.masteryLevel + 1
-            : Math.max(0, currentCard.masteryLevel - 1),
-        });
+        // await api.post('/study/answer', {
+        //   wordId: currentCard.id,
+        //   isCorrect,
+        //   masteryLevel: isCorrect
+        //     ? currentCard.masteryLevel + 1
+        //     : Math.max(0, currentCard.masteryLevel - 1),
+        // });
+        console.log('Answer submitted:', { wordId: currentCard.id, isCorrect });
 
         // Move to next card
         const nextIndex = sessionStats.currentIndex + 1;
@@ -106,12 +130,12 @@ export function useStudy(): UseStudyReturn {
 
   const endSession = useCallback(async (): Promise<StudySession> => {
     try {
-      const response = await api.post('/study/session/end', {
-        totalWords: sessionStats.total,
-        correctAnswers: sessionStats.correct,
-        incorrectAnswers: sessionStats.incorrect,
-        duration: Date.now(), // This should be calculated from session start time
-      });
+      // const response = await api.post('/study/session/end', {
+      //   totalWords: sessionStats.total,
+      //   correctAnswers: sessionStats.correct,
+      //   incorrectAnswers: sessionStats.incorrect,
+      //   duration: Date.now(), // This should be calculated from session start time
+      // });
 
       // Reset session state
       setCurrentCard(null);
@@ -123,7 +147,20 @@ export function useStudy(): UseStudyReturn {
         currentIndex: 0,
       });
 
-      return response.data;
+      // Mock response
+      const mockSession: StudySession = {
+        id: 'mock-session-' + Date.now(),
+        userId: 'mock-user',
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: 15,
+        wordsStudied: sessionStats.total,
+        correctAnswers: sessionStats.correct,
+        incorrectAnswers: sessionStats.incorrect,
+        sessionType: 'flashcard',
+      };
+
+      return mockSession;
     } catch (error) {
       throw error;
     }
@@ -131,12 +168,29 @@ export function useStudy(): UseStudyReturn {
 
   const getProgressStats = useCallback(async (): Promise<ProgressStats> => {
     try {
-      const response = await api.get('/study/progress');
-      return response.data;
+      // const response = await api.get('/study/progress');
+      // return response.data;
+
+      // Mock response
+      const mockProgress: ProgressStats = {
+        totalWordsLearned: sessionStats.total || 0,
+        currentStreak: 3,
+        longestStreak: 15,
+        totalStudyTime: 120,
+        accuracyRate:
+          sessionStats.total > 0
+            ? (sessionStats.correct / sessionStats.total) * 100
+            : 0,
+        level: 5,
+        experience: 1250,
+        experienceToNextLevel: 250,
+      };
+
+      return mockProgress;
     } catch (error) {
       throw error;
     }
-  }, []);
+  }, [sessionStats]);
 
   return {
     currentCard,

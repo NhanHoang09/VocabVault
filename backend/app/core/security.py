@@ -45,7 +45,26 @@ class SecurityManager:
             expire = datetime.utcnow() + timedelta(
                 minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
             )
-        to_encode.update({"exp": expire})
+        to_encode.update({"exp": expire, "type": "access"})
+        encoded_jwt = jwt.encode(
+            to_encode, 
+            settings.SECRET_KEY, 
+            algorithm=settings.ALGORITHM
+        )
+        return encoded_jwt
+    
+    @staticmethod
+    def create_refresh_token(
+        data: dict, 
+        expires_delta: Optional[timedelta] = None
+    ) -> str:
+        """Create JWT refresh token"""
+        to_encode = data.copy()
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(days=7)  # 7 ngày
+        to_encode.update({"exp": expire, "type": "refresh"})
         encoded_jwt = jwt.encode(
             to_encode, 
             settings.SECRET_KEY, 
@@ -65,6 +84,24 @@ class SecurityManager:
             return payload
         except JWTError as e:
             logger.error(f"JWT verification error: {e}")
+            return None
+    
+    @staticmethod
+    def verify_refresh_token(token: str) -> Optional[dict]:
+        """Verify JWT refresh token"""
+        try:
+            payload = jwt.decode(
+                token, 
+                settings.SECRET_KEY, 
+                algorithms=[settings.ALGORITHM]
+            )
+            # Kiểm tra token type
+            if payload.get("type") != "refresh":
+                logger.error("Token is not a refresh token")
+                return None
+            return payload
+        except JWTError as e:
+            logger.error(f"Refresh token verification error: {e}")
             return None
 
 

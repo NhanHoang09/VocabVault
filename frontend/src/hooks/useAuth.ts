@@ -1,129 +1,87 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, LoginCredentials, RegisterData, AuthResponse } from '@/types';
-import { AUTH_CONFIG, ROUTES } from '@/constants';
-import { api } from '@/lib/api';
+import { useAuthStore } from '@/features/auth/store/auth.store';
+import { ROUTES } from '@/constants';
+import {
+  User,
+  LoginCredentials,
+  RegisterCredentials,
+} from '@/features/auth/types/auth';
 
 interface UseAuthReturn {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterCredentials) => Promise<void>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
 }
 
 export function useAuth(): UseAuthReturn {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Check if user is authenticated on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const token = localStorage.getItem(AUTH_CONFIG.TOKEN_KEY);
-        const userData = localStorage.getItem(AUTH_CONFIG.USER_KEY);
-
-        if (token && userData) {
-          const user = JSON.parse(userData);
-          setUser(user);
-
-          // Verify token with backend
-          await api.get('/auth/verify');
-        }
-      } catch (error) {
-        // Token is invalid, clear storage
-        localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
-        localStorage.removeItem(AUTH_CONFIG.USER_KEY);
-        localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
+  // ✅ Sử dụng Zustand store
+  const {
+    user,
+    isLoading,
+    isAuthenticated,
+    login: storeLogin,
+    register: storeRegister,
+    logout: storeLogout,
+    setUser,
+  } = useAuthStore();
 
   const login = useCallback(
     async (credentials: LoginCredentials) => {
       try {
-        setIsLoading(true);
-        const response = await api.post<AuthResponse>(
-          '/auth/login',
-          credentials
-        );
-
-        const { user, token, refreshToken } = response.data;
-
-        // Store auth data
-        localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
-        localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
-        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
-
-        setUser(user);
+        await storeLogin(credentials);
         router.push(ROUTES.DASHBOARD);
       } catch (error) {
         throw error;
-      } finally {
-        setIsLoading(false);
       }
     },
-    [router]
+    [storeLogin, router]
   );
 
   const register = useCallback(
-    async (data: RegisterData) => {
+    async (data: RegisterCredentials) => {
       try {
-        setIsLoading(true);
-        const response = await api.post<AuthResponse>('/auth/register', data);
-
-        const { user, token, refreshToken } = response.data;
-
-        // Store auth data
-        localStorage.setItem(AUTH_CONFIG.TOKEN_KEY, token);
-        localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
-        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
-
-        setUser(user);
+        await storeRegister(data);
         router.push(ROUTES.DASHBOARD);
       } catch (error) {
         throw error;
-      } finally {
-        setIsLoading(false);
       }
     },
-    [router]
+    [storeRegister, router]
   );
 
-  const logout = useCallback(() => {
-    // Clear auth data
-    localStorage.removeItem(AUTH_CONFIG.TOKEN_KEY);
-    localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_CONFIG.USER_KEY);
-
-    setUser(null);
-    router.push(ROUTES.HOME);
-  }, [router]);
+  const logout = useCallback(async () => {
+    try {
+      await storeLogout();
+      router.push(ROUTES.HOME);
+    } catch (error) {
+      console.error('Logout error:', error);
+      router.push(ROUTES.HOME);
+    }
+  }, [storeLogout, router]);
 
   const updateUser = useCallback(
     (userData: Partial<User>) => {
       if (user) {
         const updatedUser = { ...user, ...userData };
         setUser(updatedUser);
-        localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(updatedUser));
       }
     },
-    [user]
+    [user, setUser]
   );
 
   return {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated,
     login,
     register,
     logout,

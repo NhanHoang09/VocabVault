@@ -69,10 +69,10 @@ const Header: React.FC<HeaderProps> = ({
                   <button className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors">
                     <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
                       <span className="text-white font-semibold text-sm">
-                        {user?.firstName?.[0] || 'U'}
+                        {user?.username?.[0] || 'U'}
                       </span>
                     </div>
-                    <span className="hidden lg:block">{user?.firstName}</span>
+                    <span className="hidden lg:block">{user?.username}</span>
                     <svg
                       className="w-4 h-4"
                       fill="none"

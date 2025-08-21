@@ -1,13 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import security_manager
+from app.core.config import settings
 from app.core.exceptions import AuthenticationError
 from app.modules.auth.models import User
 from app.modules.auth.schemas import UserCreate, UserLogin, UserResponse, TokenResponse
 from app.modules.auth.services import AuthService
 from app.core.dependencies import require_active_user
 from typing import Any
+from jose import JWTError
 
 router = APIRouter(
     prefix="/auth", 
@@ -79,14 +82,31 @@ def login(
             detail="Inactive user"
         )
     
-    # Create access token
+    # Create access token (30 phút)
     access_token = security_manager.create_access_token(data={"sub": str(user.id)})
     
-    return {
+    # Create refresh token (7 ngày)
+    refresh_token = security_manager.create_refresh_token(data={"sub": str(user.id)})
+    
+    # Create response
+    response = JSONResponse(content={
         "access_token": access_token,
         "token_type": "bearer",
-        "user": UserResponse.model_validate(user)
-    }
+        "user": UserResponse.model_validate(user).model_dump(mode='json')
+    })
+    
+    # Set refresh token as HttpOnly cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,           # Không thể truy cập từ JavaScript
+        secure=not settings.DEBUG,  # Chỉ gửi qua HTTPS trong production
+        samesite="lax",          # Lax cho development, strict cho production
+        max_age=7*24*60*60,      # 7 ngày
+        path="/"                 # Gửi cho tất cả endpoints
+    )
+    
+    return response
 
 
 @router.get(
@@ -108,6 +128,71 @@ def get_current_user_info(
     Returns the profile information of the currently authenticated user.
     """
     return UserResponse.model_validate(current_user)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    summary="Refresh access token",
+    description="Refresh access token using refresh token from cookie",
+    responses={
+        200: {"description": "Token refreshed successfully"},
+        401: {"description": "Invalid refresh token"}
+    }
+)
+def refresh_token(request: Request, db: Session = Depends(get_db)) -> Any:
+    """
+    Refresh access token using refresh token from HttpOnly cookie.
+    
+    The refresh token is automatically sent with the request via cookie.
+    """
+    # Lấy refresh token từ cookie
+    refresh_token = request.cookies.get("refresh_token")
+    
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token not found"
+        )
+    
+    try:
+        # Verify refresh token
+        payload = security_manager.verify_refresh_token(refresh_token)
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
+        
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload"
+            )
+        
+        # Get user
+        user = AuthService.get_user_by_id(db, int(user_id))
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive"
+            )
+        
+        # Create new access token
+        new_access_token = security_manager.create_access_token(data={"sub": str(user.id)})
+        
+        return {
+            "access_token": new_access_token,
+            "token_type": "bearer",
+            "user": UserResponse.model_validate(user)
+        }
+        
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )
 
 
 @router.post(
@@ -192,28 +277,23 @@ def debug_token(
 
 
 @router.post(
-    "/refresh",
-    response_model=TokenResponse,
-    summary="Refresh access token",
-    description="Get a new access token using current user session",
+    "/logout",
+    summary="Logout user",
+    description="Logout user and clear refresh token cookie",
     responses={
-        200: {"description": "Token refreshed successfully"},
-        401: {"description": "Not authenticated"}
+        200: {"description": "Logged out successfully"}
     }
 )
-def refresh_token(
-    current_user: User = Depends(require_active_user)
-) -> Any:
+def logout() -> Any:
     """
-    Refresh access token.
-    
-    Generate a new access token for the currently authenticated user.
+    Logout user and clear refresh token cookie.
     """
-    # Create new access token
-    access_token = security_manager.create_access_token(data={"sub": str(current_user.id)})
+    response = JSONResponse(content={"message": "Logged out successfully"})
     
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": UserResponse.model_validate(current_user)
-    }
+    # Clear refresh token cookie
+    response.delete_cookie(
+        key="refresh_token",
+        path="/auth/refresh"
+    )
+    
+    return response
