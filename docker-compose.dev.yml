@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Development
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: vocabvault-postgres-dev
+    environment:
+      POSTGRES_DB: vocabvault_dev
+      POSTGRES_USER: vocabvault_dev
+      POSTGRES_PASSWORD: vocabvault_dev123
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - vocabvault-dev-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vocabvault_dev -d vocabvault_dev"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for Development
+  redis-dev:
+    image: redis:7-alpine
+    container_name: vocabvault-redis-dev
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts
+    volumes:
+      - redis_dev_data:/data
+    networks:
+      - vocabvault-dev-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backend API for Development
+  backend-dev:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: vocabvault-backend-dev
+    environment:
+      - DATABASE_URL=postgresql://vocabvault_dev:vocabvault_dev123@postgres-dev:5432/vocabvault_dev
+      - REDIS_URL=redis://redis-dev:6379
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENVIRONMENT=development
+      - DEBUG=true
+    ports:
+      - "8001:8000"  # Different port to avoid conflicts
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+      redis-dev:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/venv
+    networks:
+      - vocabvault-dev-network
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend for Development
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: vocabvault-frontend-dev
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_APP_NAME=My Vocabulary Vault (Dev)
+    ports:
+      - "3001:3000"  # Different port to avoid conflicts
+    depends_on:
+      - backend-dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - vocabvault-dev-network
+    restart: unless-stopped
+    command: npm run dev
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+
+networks:
+  vocabvault-dev-network:
+    driver: bridge

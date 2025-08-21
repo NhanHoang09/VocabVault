@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: vocabulary_vault_db_dev
+    environment:
+      POSTGRES_DB: vocabulary_vault
+      POSTGRES_USER: vocabulary_user
+      POSTGRES_PASSWORD: vocabulary_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - vocabulary_network_dev
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: vocabulary_vault_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - vocabulary_network_dev
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: vocabulary_vault_pgadmin_dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@vocabularyvault.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data_dev:/var/lib/pgadmin
+    networks:
+      - vocabulary_network_dev
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data_dev:
+  redis_data_dev:
+  pgadmin_data_dev:
+
+networks:
+  vocabulary_network_dev:
+    driver: bridge
